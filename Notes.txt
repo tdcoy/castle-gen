@@ -1,0 +1,19 @@
+1. Generate rooms from available room list.
+    - Main floor rooms and towers
+    - Second floor rooms based on placement of 2 story main floor rooms and towers
+    - Basement floor rooms
+2. Find Delaunay Tetrahedralization used to connect rooms (Bowyer-Watson Algorithm, cirum circles to spheres)
+3. Find Mininum Spanning Tree (Prim's Algorithm) to guarentee every room is reachable
+4. Randomly choose remaining edge's not connected to create additional hallways
+5. For every hallway, use A* algorithm to find path between the rooms
+    - Stairs/Spiral stair cases
+
+1. Generate rooms from available room list.
+    - Main floor rooms and towers
+    - Second floor rooms based on placement of 2 story main floor rooms and towers
+    - Basement floor rooms
+2. Connect rooms
+    - Main rooms to towers
+    - Towers to walls and other towers
+    - Minor rooms to cooresponding main rooms
+3. Repeat for second floor and basement floor
