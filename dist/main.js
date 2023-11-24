@@ -15,6 +15,9 @@ const camera = new THREE.PerspectiveCamera(
 
 const controls = new OrbitControls(camera, renderer.domElement);
 
+controls.enablePan = false;
+controls.enableDamping = true;
+
 function Init() {
   CreateScene();
   LoadLights();
@@ -37,8 +40,9 @@ function Init() {
     points
   );
 
+  controls.target.set(pointsRegion / 2, 0, pointsRegion / 2);
+  controls.update();
   camera.position.set(0, pointsRegion, 0);
-  //camera.lookAt(new THREE.Vector3(0, 0, 0));
 }
 
 function CreateScene() {
