@@ -6,13 +6,20 @@ export const delaunay_triangulation = (() => {
 
     Init(scene, points) {
       this.scene = scene;
+
       let vertices = [];
       for (let i = 0; i < points.length; i++) {
         const v = new Vertex(points[i].x, points[i].y);
         vertices.push(v);
       }
 
-      this.Triangulation(vertices);
+      let triangles = this.Triangulation(vertices);
+
+      /* for (let i = 0; i < triangles.length; i++) {
+        this.DrawTriangle(triangles[i]);
+      } */
+
+      this.CreateMesh(triangles);
     }
 
     Triangulation(vertices) {
@@ -45,9 +52,6 @@ export const delaunay_triangulation = (() => {
         );
       });
 
-      for (let i = 0; i < triangles.length; i++) {
-        this.Draw(triangles[i]);
-      }
       return triangles;
     }
 
@@ -114,7 +118,7 @@ export const delaunay_triangulation = (() => {
       return uniqueEdges;
     }
 
-    Draw(triangles) {
+    DrawTriangle(triangles) {
       const geometryA = new THREE.BoxGeometry(1, 1, 1);
       const materialA = new THREE.MeshBasicMaterial({ color: 0xff0fff });
       const pointA = new THREE.Mesh(geometryA, materialA);
@@ -135,14 +139,46 @@ export const delaunay_triangulation = (() => {
 
       const lineMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff });
       const points = [];
-      points.push(new THREE.Vector3(triangles.v0.x, 0, triangles.v0.y));
-      points.push(new THREE.Vector3(triangles.v1.x, 0, triangles.v1.y));
-      points.push(new THREE.Vector3(triangles.v2.x, 0, triangles.v2.y));
-      points.push(new THREE.Vector3(triangles.v0.x, 0, triangles.v0.y));
+      points.push(new THREE.Vector3(triangles.v0.x, 0.1, triangles.v0.y));
+      points.push(new THREE.Vector3(triangles.v1.x, 0.1, triangles.v1.y));
+      points.push(new THREE.Vector3(triangles.v2.x, 0.1, triangles.v2.y));
+      points.push(new THREE.Vector3(triangles.v0.x, 0.1, triangles.v0.y));
 
       const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
       const line = new THREE.Line(lineGeometry, lineMaterial);
       this.scene.add(line);
+    }
+
+    CreateMesh(triangles) {
+      for (let i = 0; i < triangles.length; i++) {
+        const geometry = new THREE.BufferGeometry();
+
+        const vertices = new Float32Array([
+          triangles[i].v0.x,
+          0,
+          triangles[i].v0.y,
+          triangles[i].v1.x,
+          0,
+          triangles[i].v1.y,
+          triangles[i].v2.x,
+          0,
+          triangles[i].v2.y,
+        ]);
+
+        const indices = [0, 1, 2, 0];
+
+        geometry.setIndex(indices);
+        geometry.setAttribute(
+          "position",
+          new THREE.BufferAttribute(vertices, 3)
+        );
+
+        const color = THREE.MathUtils.randInt(0, 0xffffff);
+
+        const material = new THREE.MeshStandardMaterial({ color: color });
+        const mesh = new THREE.Mesh(geometry, material);
+        this.scene.add(mesh);
+      }
     }
   }
 
