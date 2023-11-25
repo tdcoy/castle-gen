@@ -14,12 +14,10 @@ export const delaunay_triangulation = (() => {
       }
 
       let triangles = this.Triangulation(vertices);
+      // Remove triangles with too small of angles
 
-      /* for (let i = 0; i < triangles.length; i++) {
-        this.DrawTriangle(triangles[i]);
-      } */
-
-      this.CreateMesh(triangles);
+      this.CreateMesh(this.RemoveOutlierTriangles(triangles));
+      //this.BuildRoom(this.RemoveOutlierTriangles(triangles));
     }
 
     Triangulation(vertices) {
@@ -33,9 +31,6 @@ export const delaunay_triangulation = (() => {
       for (let i = 0; i < vertices.length; i++) {
         triangles = this.AddVertex(vertices[i], triangles);
       }
-
-      // Remove triangles that share edges with super triangle
-      //triangles = triangles.filter(this.CheckEdge(triangle));
 
       // Remove triangles that share edges with super triangle
       triangles = triangles.filter(function (triangle) {
@@ -118,6 +113,7 @@ export const delaunay_triangulation = (() => {
       return uniqueEdges;
     }
 
+    // For debugging
     DrawTriangle(triangles) {
       const geometryA = new THREE.BoxGeometry(1, 1, 1);
       const materialA = new THREE.MeshBasicMaterial({ color: 0xff0fff });
@@ -149,10 +145,61 @@ export const delaunay_triangulation = (() => {
       this.scene.add(line);
     }
 
+    RemoveOutlierTriangles(triangles) {
+      let goodTriangles = [];
+      const minAngle = 20;
+      const maxAngle = 125;
+
+      for (let i = 0; i < triangles.length; i++) {
+        let sideA = triangles[i].v0.distanceTo(triangles[i].v1);
+        let sideB = triangles[i].v0.distanceTo(triangles[i].v2);
+        let sideC = triangles[i].v1.distanceTo(triangles[i].v2);
+
+        let angleA =
+          Math.acos(
+            (Math.pow(sideA, 2) - Math.pow(sideB, 2) - Math.pow(sideC, 2)) /
+              (-2 * sideB * sideC)
+          ) *
+          (180 / Math.PI);
+
+        let angleB =
+          Math.acos(
+            (Math.pow(sideB, 2) - Math.pow(sideC, 2) - Math.pow(sideA, 2)) /
+              (-2 * sideA * sideC)
+          ) *
+          (180 / Math.PI);
+
+        let angleC =
+          Math.acos(
+            (Math.pow(sideC, 2) - Math.pow(sideA, 2) - Math.pow(sideB, 2)) /
+              (-2 * sideA * sideB)
+          ) *
+          (180 / Math.PI);
+
+        if (
+          angleA < maxAngle &&
+          angleA > minAngle &&
+          angleB < maxAngle &&
+          angleB > minAngle &&
+          angleC < maxAngle &&
+          angleC > minAngle
+        ) {
+          goodTriangles.push(triangles[i]);
+        }
+      }
+
+      return goodTriangles;
+    }
+
     CreateMesh(triangles) {
+      let meshes = [];
+
+      const texture = new THREE.TextureLoader().load(
+        "images/textures/cobble_floor.jpg"
+      );
+
       for (let i = 0; i < triangles.length; i++) {
         const geometry = new THREE.BufferGeometry();
-
         const vertices = new Float32Array([
           triangles[i].v0.x,
           0,
@@ -165,20 +212,91 @@ export const delaunay_triangulation = (() => {
           triangles[i].v2.y,
         ]);
 
+        const uvs = new Float32Array([0, 0, 0, 1, 1, 0]);
         const indices = [0, 1, 2, 0];
+        const normals = [0, 0, 1];
 
         geometry.setIndex(indices);
         geometry.setAttribute(
           "position",
           new THREE.BufferAttribute(vertices, 3)
         );
+        geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+        geometry.setAttribute(
+          "normal",
+          new THREE.Float32BufferAttribute(normals, 3)
+        );
 
-        const color = THREE.MathUtils.randInt(0, 0xffffff);
+        const texture_material = new THREE.MeshBasicMaterial({ map: texture });
+
+        let color = THREE.MathUtils.randInt(0, 0xffffff);
 
         const material = new THREE.MeshStandardMaterial({ color: color });
         const mesh = new THREE.Mesh(geometry, material);
         this.scene.add(mesh);
+        meshes.push(mesh);
       }
+
+      return meshes;
+    }
+
+    BuildRoom(triangles) {
+      let roomSize = 6;
+      let mesh = [];
+
+      // Pick random triangle
+      let sample = triangles[Math.floor(Math.random() * triangles.length)];
+      mesh = this.CreateMeshFromAdjacentEdges(sample, triangles, mesh);
+
+      mesh = this.CreateMeshFromAdjacentEdges(
+        mesh[mesh.length - 1],
+        triangles,
+        mesh
+      );
+      mesh = this.CreateMeshFromAdjacentEdges(
+        mesh[mesh.length - 1],
+        triangles,
+        mesh
+      );
+
+      /* for (let j = 0; j < roomSize; j++) {
+        sample = mesh[Math.floor(Math.random() * mesh.length)];
+        mesh = this.CreateMeshFromAdjacentEdges(sample, triangles, mesh);
+      } */
+
+      this.CreateMesh(mesh);
+    }
+
+    CreateMeshFromAdjacentEdges(sample, triangles, mesh) {
+      mesh.push(sample);
+
+      for (let i = 0; i < triangles.length; i++) {
+        if (
+          (sample.v0.equals(triangles[i].v0) &&
+            sample.v2.equals(triangles[i].v1)) ||
+          (sample.v0.equals(triangles[i].v2) &&
+            sample.v2.equals(triangles[i].v0)) ||
+          (sample.v0.equals(triangles[i].v1) &&
+            sample.v2.equals(triangles[i].v2)) ||
+          (sample.v1.equals(triangles[i].v0) &&
+            sample.v0.equals(triangles[i].v1)) ||
+          (sample.v1.equals(triangles[i].v2) &&
+            sample.v0.equals(triangles[i].v0)) ||
+          (sample.v1.equals(triangles[i].v1) &&
+            sample.v0.equals(triangles[i].v2)) ||
+          (sample.v2.equals(triangles[i].v0) &&
+            sample.v1.equals(triangles[i].v1)) ||
+          (sample.v2.equals(triangles[i].v2) &&
+            sample.v1.equals(triangles[i].v0)) ||
+          (sample.v2.equals(triangles[i].v1) &&
+            sample.v1.equals(triangles[i].v2))
+        ) {
+          mesh.push(triangles[i]);
+          break;
+        }
+      }
+
+      return mesh;
     }
   }
 
@@ -205,6 +323,12 @@ export const delaunay_triangulation = (() => {
 
     equals(v) {
       return v.x === this.x && v.y === this.y;
+    }
+
+    distanceTo(v) {
+      const dx = v.x - this.x;
+      const dy = v.y - this.y;
+      return Math.sqrt(dx * dx + dy * dy);
     }
   }
 

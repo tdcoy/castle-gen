@@ -55,10 +55,10 @@ export const poisson_disc_sampling = (() => {
           let randMagnitute = Math.random() * (2 * radius - radius) + radius;
           sample.setLength(randMagnitute);
           sample.add(activePointPos);
-          //let intx = Math.floor(sample.x);
-          let intx = sample.x;
-          //let inty = Math.floor(sample.y);
-          let inty = sample.y;
+          let intx = Math.floor(sample.x);
+          //let intx = sample.x;
+          let inty = Math.floor(sample.y);
+          //let inty = sample.y;
           sample = new THREE.Vector2(intx, inty);
 
           let col = Math.floor(sample.x / this.cellSize);
@@ -93,7 +93,7 @@ export const poisson_disc_sampling = (() => {
               found = true;
               this.grid[col + row * this.cols] = sample;
               this.activePoints.push(sample);
-              
+
               this.sites.push(sample);
               break;
             }
@@ -119,17 +119,6 @@ export const poisson_disc_sampling = (() => {
           point.position.set(this.sites[index].x, 0, this.sites[index].y);
         }
       }
-
-      //center point
-      points[0].material.color.setHex(0xffff00);
-
-      /* var upperbound = (points.length / 2) * 1.25;
-      var lowerbound = (points.length / 2) * 0.75;
-      var randomSite =
-        points[
-          Math.floor(Math.random() * (upperbound - lowerbound) + lowerbound)
-        ];
-      randomSite.material.color.setHex(0xffff00); */
     }
   }
 
