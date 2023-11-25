@@ -23,13 +23,13 @@ function Init() {
   LoadLights();
   LoadSkyBox();
 
-  const pointsRegion = 100;
+  const pointsRegion = 200;
 
   /* const points = new generate_points.GeneratePoints();
   points.Init(); */
   const points = new poisson_disc_sampling.SpawnPoints().Init(
     scene,
-    10,
+    20,
     pointsRegion,
     pointsRegion,
     30
