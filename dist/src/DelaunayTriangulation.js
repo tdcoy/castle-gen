@@ -1,12 +1,8 @@
-import * as THREE from "https://unpkg.com/three@0.158.0/build/three.module.js";
-
 export const delaunay_triangulation = (() => {
   class Triangulate {
     constructor() {}
 
-    Init(scene, points) {
-      this.scene = scene;
-
+    Init(points) {
       let vertices = [];
       for (let i = 0; i < points.length; i++) {
         const v = new Vertex(points[i].x, points[i].y);
@@ -14,10 +10,13 @@ export const delaunay_triangulation = (() => {
       }
 
       let triangles = this.Triangulation(vertices);
-      // Remove triangles with too small of angles
+      let cleanedTriangles = this.RemoveOutlierTriangles(triangles);
 
-      this.CreateMesh(this.RemoveOutlierTriangles(triangles));
-      //this.BuildRoom(this.RemoveOutlierTriangles(triangles));
+      for (let i = 0; i < cleanedTriangles.length; i++) {
+        cleanedTriangles[i].findAdjTriangles(cleanedTriangles);
+      }
+      //this.CreateMeshFromAdjacentEdges();
+      return cleanedTriangles;
     }
 
     Triangulation(vertices) {
@@ -113,42 +112,10 @@ export const delaunay_triangulation = (() => {
       return uniqueEdges;
     }
 
-    // For debugging
-    DrawTriangle(triangles) {
-      const geometryA = new THREE.BoxGeometry(1, 1, 1);
-      const materialA = new THREE.MeshBasicMaterial({ color: 0xff0fff });
-      const pointA = new THREE.Mesh(geometryA, materialA);
-      this.scene.add(pointA);
-      pointA.position.set(triangles.v0.x, 0, triangles.v0.y);
-
-      const geometryB = new THREE.BoxGeometry(1, 1, 1);
-      const materialB = new THREE.MeshBasicMaterial({ color: 0xff0fff });
-      const pointB = new THREE.Mesh(geometryB, materialB);
-      this.scene.add(pointB);
-      pointB.position.set(triangles.v1.x, 0, triangles.v1.y);
-
-      const geometryC = new THREE.BoxGeometry(1, 1, 1);
-      const materialC = new THREE.MeshBasicMaterial({ color: 0xff0fff });
-      const pointC = new THREE.Mesh(geometryC, materialC);
-      this.scene.add(pointC);
-      pointC.position.set(triangles.v2.x, 0, triangles.v2.y);
-
-      const lineMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff });
-      const points = [];
-      points.push(new THREE.Vector3(triangles.v0.x, 0.1, triangles.v0.y));
-      points.push(new THREE.Vector3(triangles.v1.x, 0.1, triangles.v1.y));
-      points.push(new THREE.Vector3(triangles.v2.x, 0.1, triangles.v2.y));
-      points.push(new THREE.Vector3(triangles.v0.x, 0.1, triangles.v0.y));
-
-      const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
-      const line = new THREE.Line(lineGeometry, lineMaterial);
-      this.scene.add(line);
-    }
-
     RemoveOutlierTriangles(triangles) {
       let goodTriangles = [];
-      const minAngle = 20;
-      const maxAngle = 125;
+      const minAngle = 15;
+      const maxAngle = 165;
 
       for (let i = 0; i < triangles.length; i++) {
         let sideA = triangles[i].v0.distanceTo(triangles[i].v1);
@@ -189,82 +156,6 @@ export const delaunay_triangulation = (() => {
       }
 
       return goodTriangles;
-    }
-
-    CreateMesh(triangles) {
-      let meshes = [];
-
-      const texture = new THREE.TextureLoader().load(
-        "images/textures/cobble_floor.jpg"
-      );
-
-      for (let i = 0; i < triangles.length; i++) {
-        const geometry = new THREE.BufferGeometry();
-        const vertices = new Float32Array([
-          triangles[i].v0.x,
-          0,
-          triangles[i].v0.y,
-          triangles[i].v1.x,
-          0,
-          triangles[i].v1.y,
-          triangles[i].v2.x,
-          0,
-          triangles[i].v2.y,
-        ]);
-
-        const uvs = new Float32Array([0, 0, 0, 1, 1, 0]);
-        const indices = [0, 1, 2, 0];
-        const normals = [0, 0, 1];
-
-        geometry.setIndex(indices);
-        geometry.setAttribute(
-          "position",
-          new THREE.BufferAttribute(vertices, 3)
-        );
-        geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
-        geometry.setAttribute(
-          "normal",
-          new THREE.Float32BufferAttribute(normals, 3)
-        );
-
-        const texture_material = new THREE.MeshBasicMaterial({ map: texture });
-
-        let color = THREE.MathUtils.randInt(0, 0xffffff);
-
-        const material = new THREE.MeshStandardMaterial({ color: color });
-        const mesh = new THREE.Mesh(geometry, material);
-        this.scene.add(mesh);
-        meshes.push(mesh);
-      }
-
-      return meshes;
-    }
-
-    BuildRoom(triangles) {
-      let roomSize = 6;
-      let mesh = [];
-
-      // Pick random triangle
-      let sample = triangles[Math.floor(Math.random() * triangles.length)];
-      mesh = this.CreateMeshFromAdjacentEdges(sample, triangles, mesh);
-
-      mesh = this.CreateMeshFromAdjacentEdges(
-        mesh[mesh.length - 1],
-        triangles,
-        mesh
-      );
-      mesh = this.CreateMeshFromAdjacentEdges(
-        mesh[mesh.length - 1],
-        triangles,
-        mesh
-      );
-
-      /* for (let j = 0; j < roomSize; j++) {
-        sample = mesh[Math.floor(Math.random() * mesh.length)];
-        mesh = this.CreateMeshFromAdjacentEdges(sample, triangles, mesh);
-      } */
-
-      this.CreateMesh(mesh);
     }
 
     CreateMeshFromAdjacentEdges(sample, triangles, mesh) {
@@ -352,8 +243,65 @@ export const delaunay_triangulation = (() => {
       this.v1 = v1;
       this.v2 = v2;
 
+      this.edges = this.setEdges();
+      this.adjTriangles = [];
+
       this.circumCenter = this.calcCircumCenter(this.v0, this.v1, this.v2);
       this.circumRadius = this.calcCircumRadius(this.circumCenter);
+    }
+
+    findAdjTriangles(triangles) {
+      let adjTriangles = [];
+
+      //Loop through triangles
+      for (let i = 0; i < triangles.length; i++) {
+        let otherEdges = triangles[i].getEdges();
+
+        //Check if the cur triangle is this triangle
+        if (!triangles[i].equals(this)) {
+          //Check for adjacency
+          for (let j = 0; j < 3; j++) {
+            for (let k = 0; k < 3; k++) {
+              if (this.edges[j].equals(otherEdges[k])) {
+                adjTriangles.push(triangles[i]);
+              }
+            }
+          }
+        }
+      }
+
+      this.adjTriangles = adjTriangles;
+    }
+
+    setEdges() {
+      let edges = [];
+      let edge1 = new Edge(this.v0, this.v1);
+      let edge2 = new Edge(this.v0, this.v2);
+      let edge3 = new Edge(this.v2, this.v1);
+      edges.push(edge1);
+      edges.push(edge2);
+      edges.push(edge3);
+      return edges;
+    }
+
+    getVertices() {
+      let verts = [];
+      verts.push(this.v0);
+      verts.push(this.v1);
+      verts.push(this.v2);
+      return verts;
+    }
+
+    getEdges() {
+      return this.edges;
+    }
+
+    getAdjTriangles() {
+      return this.adjTriangles;
+    }
+
+    circumCenter(){
+      return this.circumCenter;
     }
 
     inCircumCircle(v) {
@@ -392,6 +340,17 @@ export const delaunay_triangulation = (() => {
       const dx = center.x - this.v0.x;
       const dy = center.y - this.v0.y;
       return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    equals(triangle) {
+      if (
+        triangle.v0.equals(this.v0) &&
+        triangle.v1.equals(this.v1) &&
+        triangle.v2.equals(this.v2)
+      ) {
+        return true;
+      }
+      return false;
     }
   }
 
