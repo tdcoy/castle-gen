@@ -12,10 +12,20 @@ export const testing = (() => {
 
     Init() {
       this.radius = 5;
-      this.width = 250;
-      this.height = 250;
+      this.width = 200;
+      this.height = 200;
 
-      this.unBuiltRooms = [];
+      this.unBuiltRooms = [
+        new GreatHall(),
+        new Kitchen(),
+        new Kitchen(),
+        new Bottlery(),
+        new Bottlery(),
+        new Ward(),
+        new Start(),
+        new Start(),
+        new Chapel(),
+      ];
 
       let points = new poisson_disc_sampling.SpawnPoints().Init(
         this.radius,
@@ -25,12 +35,6 @@ export const testing = (() => {
       );
       this.unUsedTriangles = new delaunay_triangulation.Triangulate().Init(
         points
-      );
-      let roomSpawnPoints = new poisson_disc_sampling.SpawnPoints().Init(
-        this.radius * 8,
-        this.width,
-        this.height,
-        30
       );
 
       this.rooms = [];
@@ -47,38 +51,85 @@ export const testing = (() => {
       this.towerPoints = [];
 
       this.usedTriangles = [];
-      this.availRoomSpawnPoints = roomSpawnPoints.slice();
+      this.availRoomSpawnPoints = [];
       this.curRoomSpawnPoints = [];
 
-      this.GenerateWalls(roomSpawnPoints);
+      this.GenerateCastle();
 
       //this.CreateMesh(this.unUsedTriangles, -5);
     }
 
-    GenerateWalls() {
-      //Create towers
-      for (let i = 0; i < this.towerRooms.length; i++) {
-        this.GenerateRoom(this.towerRooms[i]);
-      }
-
-      //Remove triangles outside of walls
-
-      let pointPerms = new heaps_permutation.HeapsPermutation().generateRoutes(
-        this.towerPoints
+    GenerateRoomSpawnPoints() {
+      let roomSpawnPoints = new poisson_disc_sampling.SpawnPoints().Init(
+        this.radius * 4,
+        this.width,
+        this.height,
+        30
       );
 
-      let shortestPath =
-        new heaps_permutation.HeapsPermutation().findShortestPath(pointPerms);
-
-      this.DrawShortestPath(shortestPath);
+      return roomSpawnPoints;
     }
 
-    GenerateRoom(room) {
+    GenerateCastle() {
+      let acceptedLayout = false;
+      let pointsInside = [];
+
+      while (!acceptedLayout) {
+        let roomSpawnPoints = this.GenerateRoomSpawnPoints();
+        this.availRoomSpawnPoints = roomSpawnPoints.slice();
+
+        //Create towers
+        for (let i = 0; i < this.towerRooms.length; i++) {
+          this.GenerateRoom(this.towerRooms[i], this.availRoomSpawnPoints);
+        }
+
+        //Get shortest path to define the "walls"
+        let pointPerms =
+          new heaps_permutation.HeapsPermutation().generateRoutes(
+            this.towerPoints
+          );
+
+        let shortestPath =
+          new heaps_permutation.HeapsPermutation().findShortestPath(pointPerms);
+
+        // Remove spawn points outside of these walls
+        let acceptedPoint = false;
+        let pointsInside = [];
+
+        for (let i = 0; i < this.availRoomSpawnPoints.length; i++) {
+          acceptedPoint = this.IsPointInPoly(
+            shortestPath,
+            this.availRoomSpawnPoints[i]
+          );
+
+          if (acceptedPoint) {
+            pointsInside.push(this.availRoomSpawnPoints[i]);
+          }
+        }
+
+        // Check that theere are enough spawn points for the all the rooms in the future
+        if (pointsInside.length >= this.unBuiltRooms.length) {
+          // Add Rooms
+          for (let i = 0; i < this.unBuiltRooms.length; i++) {
+            this.GenerateRoom(this.unBuiltRooms[i], pointsInside);
+          }
+
+          this.DrawShortestPath(shortestPath);
+          acceptedLayout = true;
+        } else {
+          console.log("Not enough rooms");
+        }
+      }
+
+      //this.DrawLinesBetweenPoints(pointsInside);
+    }
+
+    GenerateRoom(room, roomList) {
       // Get a spawn point from the available room spawn list
-      let roomSpawnPoint = this.GetRoomSpawnPoint();
+      let roomSpawnPoint = this.GetRoomSpawnPoint(roomList);
       if (roomSpawnPoint != undefined) {
         // Remove that spawn point from the avilable list
-        this.RemoveItemFromList(roomSpawnPoint, this.availRoomSpawnPoints);
+        this.RemoveItemFromList(roomSpawnPoint, roomList);
         // Add that spawn to the currently spawned list
         this.curRoomSpawnPoints.push(roomSpawnPoint);
 
@@ -95,15 +146,15 @@ export const testing = (() => {
     }
 
     // Returns a random index from the available room spawn points list
-    GetRoomSpawnPoint() {
-      let sample = Math.floor(Math.random() * this.availRoomSpawnPoints.length);
-      let point = this.availRoomSpawnPoints[sample];
+    GetRoomSpawnPoint(roomList) {
+      let sample = Math.floor(Math.random() * roomList.length);
+      let point = roomList[sample];
       let isAccepted = false;
       let numIterations = 0;
 
       while (!isAccepted) {
-        sample = Math.floor(Math.random() * this.availRoomSpawnPoints.length);
-        point = this.availRoomSpawnPoints[sample];
+        sample = Math.floor(Math.random() * roomList.length);
+        point = roomList[sample];
 
         // Accept this spawn point if nothing is there
         if (
@@ -171,7 +222,6 @@ export const testing = (() => {
 
       // Remove any outlier triangles
       let outlierTris = this.GetOutlierTris(room.triangles);
-
       while (outlierTris.length > 0) {
         for (let i = 0; i < outlierTris.length; i++) {
           // Add the triangle back to un-used list
@@ -317,6 +367,18 @@ export const testing = (() => {
       let index = list.indexOf(item);
       list.splice(index, 1);
     }
+
+    IsPointInPoly(poly, pt) {
+      for (var c = false, i = -1, l = poly.length, j = l - 1; ++i < l; j = i)
+        ((poly[i].y <= pt.y && pt.y < poly[j].y) ||
+          (poly[j].y <= pt.y && pt.y < poly[i].y)) &&
+          pt.x <
+            ((poly[j].x - poly[i].x) * (pt.y - poly[i].y)) /
+              (poly[j].y - poly[i].y) +
+              poly[i].x &&
+          (c = !c);
+      return c;
+    }
   }
 
   class Room {
@@ -404,6 +466,15 @@ export const testing = (() => {
       this.size = 100;
       this.type = "GreatHall";
       this.color = new THREE.Color(0xc41a30);
+    }
+  }
+
+  class Chapel extends Room {
+    constructor() {
+      super();
+      this.size = 75;
+      this.type = "Chapel";
+      this.color = new THREE.Color(0xd44468);
     }
   }
 
