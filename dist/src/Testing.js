@@ -159,6 +159,7 @@ export const testing = (() => {
 
           let wards = [];
           let ward = new Ward();
+          ward.spawnPoint = this.GetRoomSpawnPoint(roomSpawnPoints);
           wards.push(ward);
 
           this.ExpandRoomsUntilComplete(wards);
@@ -368,7 +369,7 @@ export const testing = (() => {
 
     ExpandRoomsUntilComplete(roomList) {
       let iterations = 0;
-      let n = 300;
+      let n = 1000;
 
       while (roomList.length > 0) {
         for (let i = 0; i < roomList.length; i++) {
