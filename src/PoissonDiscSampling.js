@@ -53,10 +53,10 @@ export const poisson_disc_sampling = (() => {
           let randMagnitute = Math.random() * (2 * radius - radius) + radius;
           sample.setLength(randMagnitute);
           sample.add(activePointPos);
-          //let intx = Math.floor(sample.x);
-          let intx = sample.x;
-          //let inty = Math.floor(sample.y);
-          let inty = sample.y;
+          let intx = Math.floor(sample.x);
+          //let intx = sample.x;
+          let inty = Math.floor(sample.y);
+          //let inty = sample.y;
           sample = new THREE.Vector2(intx, inty);
 
           let col = Math.floor(sample.x / this.cellSize);
