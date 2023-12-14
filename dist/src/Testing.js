@@ -37,12 +37,16 @@ export const testing = (() => {
       this.usedTriangles = [];
       this.availRoomSpawnPoints = [];
       this.shortestPath = [];
+      this.builtRooms = [];
+      this.doors = [];
 
+      //-----Generate Room-----
       this.GenerateCastle();
+
       //this.CreateMesh(this.unUsedTriangles, -5);
     }
 
-    GenerateRoomSpawnPoints() {
+    TrimSpawnPoints() {
       let roomSpawnPoints = new poisson_disc_sampling.SpawnPoints().Init(
         this.spawnPointRadius,
         this.width,
@@ -91,6 +95,7 @@ export const testing = (() => {
       towers.push(stockHouseTower);
 
       let bakeHouseTower = new Tower();
+      bakeHouseTower.addSupportRoom(new Start());
       towers.push(bakeHouseTower);
 
       let chapelTower = new Tower();
@@ -110,7 +115,7 @@ export const testing = (() => {
         //----- Generate points to spawn rooms at -----
         let towerSpawnPoints = [];
         //*************need to spread the points out further********************* */
-        let spawnPoints = this.GenerateRoomSpawnPoints();
+        let spawnPoints = this.TrimSpawnPoints();
         let towers = this.GenerateTowers();
         for (let i = 0; i < towers.length; i++) {
           // Get a random spawn point for tower
@@ -126,13 +131,13 @@ export const testing = (() => {
 
         // If there are enough spawn points for the all the rooms
         if (
-          roomSpawnPoints.length >= this.GetAllRoomsAndSupportRooms(towers) &&
+          roomSpawnPoints.length >= this.CalcNumOfRooms(towers) &&
           this.CheckForSpawnPointsInRadius(towers, roomSpawnPoints)
         ) {
           this.availRoomSpawnPoints = roomSpawnPoints.slice();
-          for (let i = 0; i < roomSpawnPoints.length; i++) {
+          /* for (let i = 0; i < roomSpawnPoints.length; i++) {
             this.DrawPoint(roomSpawnPoints[i], new THREE.Color("skyblue"), 1);
-          }
+          } */
 
           // Generate support rooms that belong to the towers
           for (let i = 0; i < towers.length; i++) {
@@ -144,7 +149,7 @@ export const testing = (() => {
                   towers[i].spawnPoint
                 );
 
-                this.GenerateRooms(towers[i].supportRooms[j], closestPoint);
+                this.SetSpawnPoints(towers[i].supportRooms[j], closestPoint);
               }
             }
           }
@@ -163,6 +168,26 @@ export const testing = (() => {
           wards.push(ward);
 
           this.ExpandRoomsUntilComplete(wards);
+
+          // Calculate Border edges and center points of rooms
+          let centers = [];
+          for (let i = 0; i < this.builtRooms.length; i++) {
+            this.builtRooms[i].calcBorderEdges();
+            let center = this.builtRooms[i].pickRandomCenter();
+            centers.push(center);
+            this.DrawPoint(center, new THREE.Color("blue"), 1);
+          }
+
+          // Triangulate all the nodes
+          let roomTriangulation = new delaunay_triangulation.Triangulate().Init(
+            centers
+          );
+
+          // Find minimum spanning tree (primms) of all the nodes from triangulation
+
+          // Reconnect some of the major rooms to nearby major rooms, especially wards to ajacent major rooms
+          
+          // Use A* to find shortest path between every adjacent rooms
 
           //-----Debug Stuff-----
           for (let i = 0; i < towerSpawnPoints.length; i++) {
@@ -249,110 +274,7 @@ export const testing = (() => {
       return point;
     }
 
-    // Connects adjacent triangle based on a positon and size of a room
-    GenerateRoom(room) {
-      // **Initialize room**
-      // Get the triangle that this point is contained in
-      let seedTriIndex = this.GetTriangleAtPoint(room, this.unUsedTriangles);
-
-      let seedTri = this.unUsedTriangles[seedTriIndex];
-      room.triangles.push(seedTri);
-      this.RemoveItemFromList(seedTri, this.unUsedTriangles);
-
-      // Add any triangles adjacent un-used triangles to this rooms triangle list
-      let adjTriangles = room.triangles[0].getAdjTriangles();
-
-      for (let i = 0; i < adjTriangles.length; i++) {
-        if (this.unUsedTriangles.includes(adjTriangles[i])) {
-          room.triangles.push(adjTriangles[i]);
-          //this.unUsedTriangles.splice(adjTriangles[i], 1);
-          this.RemoveItemFromList(adjTriangles[i], this.unUsedTriangles);
-        }
-      }
-
-      // Pick a random triangle in this rooms triangle list and repeat
-      // until its the correct size, or ran a max number of iterations
-      let isComplete = false;
-      let numIterations = 0;
-      let availableTris = room.triangles.slice();
-      let checked = room.triangles.slice();
-
-      while (!isComplete) {
-        if (
-          room.growType == GrowType.Circular &&
-          room.size <= room.triangles.length
-        ) {
-          for (let i = 1; i < room.triangles.length; i++) {
-            let adjTris = room.triangles[i].getAdjTriangles();
-            console.log("adjTris: ", adjTris.length);
-            for (let j = 0; j < adjTris.length; j++) {
-              if (
-                this.unUsedTriangles.includes(adjTris[j]) &&
-                !room.triangles.includes(adjTris[j])
-              ) {
-                room.triangles.push(adjTris[j]);
-                this.RemoveItemFromList(adjTris[j], this.unUsedTriangles);
-              }
-            }
-          }
-        } else {
-          // Pick random triangle index from the rooms triangles
-          seedTriIndex = Math.floor(Math.random() * availableTris.length);
-
-          // Add any triangles adjacent un-used triangles to this rooms triangle list
-          let adjTriangles = availableTris[seedTriIndex].getAdjTriangles();
-
-          // Get all adjacent triangles that are available
-          for (let i = 0; i < adjTriangles.length; i++) {
-            if (this.unUsedTriangles.includes(adjTriangles[i])) {
-              // Add any available triangles to the rooms triangle list
-              room.triangles.push(adjTriangles[i]);
-              availableTris.push(adjTriangles[i]);
-
-              // Remove this triangle from the unUsed triangle list
-              this.RemoveItemFromList(adjTriangles[i], this.unUsedTriangles);
-
-              //****For more long cooridor growth: */
-              // Remove seed triangle from available triangles so it is not picked again for sampling
-              //this.RemoveItemFromList(availableTris[seedTriIndex], availableTris);
-
-              //*******Need to find different ways to grow the rooms for variety */
-            }
-          }
-        }
-
-        if (room.size <= room.triangles.length) {
-          isComplete = true;
-        }
-        if (numIterations > 300) {
-          console.log("failed to build ", room.type);
-          break;
-        }
-        numIterations++;
-      }
-
-      let beforeTriNum = room.triangles.length;
-
-      // Remove any outlier triangles
-      let outlierTris = this.GetOutlierTris(room.triangles);
-      while (outlierTris.length > 0) {
-        for (let i = 0; i < outlierTris.length; i++) {
-          // Add the triangle back to un-used list
-          this.unUsedTriangles.push(outlierTris[i]);
-          // Remove from room triangle list
-          let index = room.triangles.indexOf(outlierTris[i]);
-          room.triangles.splice(index, 1);
-        }
-
-        outlierTris = this.GetOutlierTris(room.triangles);
-      }
-      if (room.triangles.length == 0) {
-        console.log("No triangles left");
-      }
-      this.CreateMesh(room.triangles, -0.1, room.color);
-    }
-
-    GenerateRooms(room, spawn) {
+    SetSpawnPoints(room, spawn) {
       room.spawnPoint = spawn;
       this.unBuiltRooms.push(room);
       // If this room has any support rooms
@@ -379,6 +301,7 @@ export const testing = (() => {
             this.ExpandRoom(room);
           } else {
             // Room is built
+            this.builtRooms.push(room);
             this.TrimOutlierTris(room);
             this.CreateMesh(room.triangles, -0.1, room.color);
             this.RemoveItemFromList(room, roomList);
@@ -389,6 +312,7 @@ export const testing = (() => {
           for (let i = 0; i < roomList.length; i++) {
             let room = roomList[i];
             console.log("Failed to expand ", roomList[i].type);
+            this.builtRooms.push(room);
             this.TrimOutlierTris(room);
             this.CreateMesh(room.triangles, -0.1, room.color);
             this.RemoveItemFromList(room, roomList);
@@ -412,26 +336,142 @@ export const testing = (() => {
             !room.triangles.includes(adj[i]) &&
             this.unUsedTriangles.includes(adj[i])
           ) {
-            room.triangles.push(adj[i]);
+            room.addTriangles(adj[i]);
             this.RemoveItemFromList(adj[i], this.unUsedTriangles);
           }
         }
       } else {
-        room.triangles.push(
-          this.unUsedTriangles[
-            this.GetTriangleAtPoint(room, this.unUsedTriangles)
-          ]
+        //Get initial spawn point for room
+        let initPoint = this.GetTriangleAtPoint(room, this.unUsedTriangles);
+        room.addTriangles(this.unUsedTriangles[initPoint]);
+        //Remove from unused triangle list
+        this.RemoveItemFromList(
+          this.unUsedTriangles[initPoint],
+          this.unUsedTriangles
         );
 
         let adjTriangles = room.triangles[0].getAdjTriangles();
 
         for (let i = 0; i < adjTriangles.length; i++) {
           if (this.unUsedTriangles.includes(adjTriangles[i])) {
-            room.triangles.push(adjTriangles[i]);
+            room.addTriangles(adjTriangles[i]);
             this.RemoveItemFromList(adjTriangles[i], this.unUsedTriangles);
           }
         }
       }
+    }
+
+    FindPathBetween() {
+      // Need to check that every room is accessable
+
+      for (let i = 0; i < this.builtRooms.length; i++) {
+        let room = this.builtRooms[i];
+        if (room.type == "Tower") {
+          let tower = this.builtRooms[i];
+          for (let j = 0; j < tower.supportRooms.length; j++) {
+            this.AddDoor(tower, tower.supportRooms[j]);
+          }
+        } else if (room.isMajor && room.supportRooms.length > 0) {
+          for (let i = 0; i < room.supportRooms.length; i++) {
+            this.AddDoor(room, room.supportRooms[i]);
+          }
+        } else {
+          //console.log(room.type, "is not connected");
+        }
+      }
+
+      // Connect any other rooms to adjacent rooms
+
+      // Find any unconnected rooms
+      let connectedRooms = [];
+      let unconnectedRooms = [];
+      // Find all rooms that are already connected
+      for (let h = 0; h < this.builtRooms.length; h++) {
+        let room = this.builtRooms[h];
+        for (let i = 0; i < this.doors.length; i++) {
+          // If this room has no doors and isn't alreay in the unconnected room list
+          if (
+            (room != this.doors[i].roomsConnected[0] ||
+              room != this.doors[i].roomsConnected[1]) &&
+            !connectedRooms.includes(room)
+          ) {
+            connectedRooms.push(room);
+          }
+        }
+      }
+
+      // Get all unconnected rooms
+      for (let i = 0; i < this.builtRooms.length; i++) {
+        if (!connectedRooms.includes(this.builtRooms[i])) {
+          unconnectedRooms.push(this.builtRooms[i]);
+        }
+      }
+
+      // Add doors to any unconnected rooms with adjacent rooms
+      for (let i = 0; i < unconnectedRooms.length; i++) {
+        let room = unconnectedRooms[i];
+        for (let k = 0; k < this.builtRooms.length; k++) {
+          let builtRoom = this.builtRooms[k];
+          if (room != builtRoom) {
+            let sharedEdge = this.CheckForSharedEdge(room, builtRoom);
+            // If the 2 rooms share and edge and are not already connected add a door
+            if (
+              sharedEdge != undefined &&
+              !this.CheckIfRoomsAreConnected(room, builtRoom)
+            ) {
+              this.AddDoor(room, builtRoom);
+            }
+          }
+        }
+      }
+
+      // Connect unconnected rooms with hallways
+
+      let points = [];
+      for (let i = 0; i < this.doors.length; i++) {
+        points.push(this.doors[i].position);
+      }
+
+      this.DrawLinesBetweenPoints(points);
+    }
+
+    PathFind() {}
+
+    AddDoor(r1, r2) {
+      let sharedEdge = this.CheckForSharedEdge(r1, r2);
+      if (sharedEdge != undefined) {
+        let newDoor = new Door();
+        newDoor.addRooms(r1, r2);
+        newDoor.setPosition(sharedEdge.getMidpoint());
+        this.doors.push(newDoor);
+        this.DrawPoint(newDoor.position, new THREE.Color("black"), 2);
+      }
+    }
+
+    CheckIfRoomsAreConnected(r1, r2) {
+      for (let i = 0; i < this.doors.length; i++) {
+        let room1 = this.doors[i].roomsConnected[0];
+        let room2 = this.doors[i].roomsConnected[1];
+
+        if ((room1 == r1 && room2 == r2) || (room1 == r2 && room2 == r1)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    CheckForSharedEdge(room1, room2) {
+      let r1edges = room1.borderEdges;
+      let r2edges = room2.borderEdges;
+
+      for (let i = 0; i < r1edges.length; i++) {
+        for (let j = 0; j < r2edges.length; j++) {
+          if (r1edges[i].equals(r2edges[j])) {
+            return r1edges[i];
+          }
+        }
+      }
+      return undefined;
     }
 
     GetPointsInbetweenTowers(towers, pointsList) {
@@ -466,7 +506,7 @@ export const testing = (() => {
           this.unUsedTriangles.push(outlierTris[i]);
           // Remove from room triangle list
           let index = room.triangles.indexOf(outlierTris[i]);
-          room.triangles.splice(index, 1);
+          room.removeTriangleAtIndex(index);
         }
 
         outlierTris = this.GetOutlierTris(room.triangles);
@@ -604,7 +644,7 @@ export const testing = (() => {
       return points;
     }
 
-    GetAllRoomsAndSupportRooms(towers) {
+    CalcNumOfRooms(towers) {
       let roomCount = this.unBuiltRooms.length;
 
       for (let i = 0; i < towers.length; i++) {
@@ -680,8 +720,8 @@ export const testing = (() => {
         //create a blue LineBasicMaterial
 
         for (let j = 0; j < points.length; j++) {
-          roomPoints.push(new THREE.Vector3(points[i].x, -3, points[i].y));
-          roomPoints.push(new THREE.Vector3(points[j].x, -3, points[j].y));
+          roomPoints.push(new THREE.Vector3(points[i].x, 3, points[i].y));
+          roomPoints.push(new THREE.Vector3(points[j].x, 3, points[j].y));
         }
       }
       const geometry = new THREE.BufferGeometry().setFromPoints(roomPoints);
@@ -712,6 +752,14 @@ export const testing = (() => {
       cube.position.set(point.x, 0, point.y);
     }
 
+    DrawBox(point, color, size) {
+      const geometry = new THREE.BoxGeometry(size, size, size);
+      const material = new THREE.MeshBasicMaterial({ color: color });
+      const cube = new THREE.Mesh(geometry, material);
+      this.scene.add(cube);
+      cube.position.set(point.x, 0, point.y);
+    }
+
     // Removes an item from the list that contains it by looking up that items index
     RemoveItemFromList(item, list) {
       let index = list.indexOf(item);
@@ -734,28 +782,31 @@ export const testing = (() => {
   class Room {
     constructor() {
       this.triangles = [];
+      this.borderEdges = [];
       this.type = "";
       this.minBuildDist = 0;
       this.spawnPoint = new THREE.Vector2();
       this.supportRooms = [];
+      this.isMajor = false;
+      this.doorTo = [];
     }
 
     addTriangles(t) {
-      for (let i = 0; i < t.length; i++) {
-        this.triangles.push(t[i]);
-      }
+      this.triangles.push(t);
+      //this.calcBorderEdges();
     }
 
-    addTriangle(t) {
-      this.triangles.push(t);
+    removeTriangleAtIndex(index) {
+      this.triangles.splice(index, 1);
+      //this.calcBorderEdges();
+    }
+
+    addDoorTo(r) {
+      this.doorTo.push(r);
     }
 
     addSupportRoom(room) {
       this.supportRooms.push(room);
-    }
-
-    setCenter(v) {
-      this.center = new THREE.Vector2(v.x, v.y);
     }
 
     size() {
@@ -770,6 +821,14 @@ export const testing = (() => {
       return this.type;
     }
 
+    isMajor() {
+      return this.isMajor;
+    }
+
+    doorTo() {
+      return this.doorTo;
+    }
+
     spawnPoint() {
       return this.spawnPoint;
     }
@@ -778,8 +837,67 @@ export const testing = (() => {
       return this.supportRooms;
     }
 
+    borderEdges() {
+      return this.borderEdges;
+    }
+
     minBuildDist() {
       return this.minBuildDist;
+    }
+
+    calcBorderEdges() {
+      for (let i = 0; i < this.triangles.length; i++) {
+        let adj = this.triangles[i].getAdjTriangles();
+
+        for (let j = 0; j < adj.length; j++) {
+          if (!this.triangles.includes(adj[j])) {
+            //this is a boundary triangle
+            let insideEdges = this.triangles[i].getEdges();
+            let outsideEdges = adj[j].getEdges();
+
+            for (let k = 0; k < insideEdges.length; k++) {
+              for (let m = 0; m < outsideEdges.length; m++) {
+                if (insideEdges[k].equals(outsideEdges[m])) {
+                  //This is a boundary edge
+                  this.borderEdges.push(insideEdges[k]);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    pickRandomCenter() {
+      let index = Math.floor(Math.random() * this.triangles.length);
+      this.center = this.triangles[index].center();
+      return this.center;
+    }
+  }
+
+  class Door {
+    constructor() {
+      this.roomsConnected = [];
+      this.position = new THREE.Vector2();
+    }
+
+    addRooms(r1, r2) {
+      this.roomsConnected.push(r1);
+      this.roomsConnected.push(r2);
+    }
+
+    setPosition(pos) {
+      this.position = new THREE.Vector2(pos.x, pos.y);
+    }
+  }
+
+  class HallWay extends Room {
+    constructor() {
+      super();
+      this.size = 10;
+      this.type = "HallWay";
+      this.color = new THREE.Color(0xfffb00);
+      this.isMajor = false;
     }
   }
 
@@ -788,20 +906,22 @@ export const testing = (() => {
       super();
       this.size = 20;
       this.type = "Start";
-      this.color = new THREE.Color(0xd7f542);
+      this.color = new THREE.Color(0xffffff);
+      this.isMajor = true;
     }
   }
 
   class Kitchen extends Room {
     constructor() {
       super();
-      this.size = 45;
+      this.size = 35;
       this.type = "Kitchen";
+      this.isMajor = true;
       this.color = new THREE.Color(0xf2bb24);
       this.supportRooms = [
         new Bottlery(),
         new Buttlery(),
-        new StoreRoom(),
+        new KitchenStoreRoom(),
         new Pantry(),
       ];
     }
@@ -812,15 +932,27 @@ export const testing = (() => {
       super();
       this.size = 20;
       this.type = "Bottlery";
+      this.isMajor = false;
       this.color = new THREE.Color(0xd19f17);
+    }
+  }
+
+  class KitchenStoreRoom extends Room {
+    constructor() {
+      super();
+      this.size = 20;
+      this.type = "KitchenStoreRoom";
+      this.isMajor = true;
+      this.color = new THREE.Color(0xaec22a);
     }
   }
 
   class StoreRoom extends Room {
     constructor() {
       super();
-      this.size = 35;
+      this.size = 30;
       this.type = "StoreRoom";
+      this.isMajor = true;
       this.color = new THREE.Color(0xaec92a);
     }
   }
@@ -828,8 +960,9 @@ export const testing = (() => {
   class Pantry extends Room {
     constructor() {
       super();
-      this.size = 25;
+      this.size = 20;
       this.type = "Pantry";
+      this.isMajor = false;
       this.color = new THREE.Color(0xa9bf3b);
     }
   }
@@ -839,6 +972,7 @@ export const testing = (() => {
       super();
       this.size = 20;
       this.type = "Buttlery";
+      this.isMajor = false;
       this.color = new THREE.Color(0x8ba608);
     }
   }
@@ -848,6 +982,7 @@ export const testing = (() => {
       super();
       this.size = 100;
       this.type = "Ward";
+      this.isMajor = true;
       this.color = new THREE.Color(0x25b33f);
     }
   }
@@ -855,8 +990,9 @@ export const testing = (() => {
   class GreatHall extends Room {
     constructor() {
       super();
-      this.size = 55;
+      this.size = 50;
       this.type = "GreatHall";
+      this.isMajor = true;
       this.color = new THREE.Color(0xc41a30);
       this.supportRooms = [new ThroneRoom()];
     }
@@ -865,8 +1001,9 @@ export const testing = (() => {
   class ThroneRoom extends Room {
     constructor() {
       super();
-      this.size = 25;
+      this.size = 20;
       this.type = "ThroneRoom";
+      this.isMajor = true;
       this.color = new THREE.Color(0xff0019);
     }
   }
@@ -874,8 +1011,9 @@ export const testing = (() => {
   class Chamber extends Room {
     constructor() {
       super();
-      this.size = 25;
+      this.size = 20;
       this.type = "Chamber";
+      this.isMajor = true;
       this.color = new THREE.Color(0xf70a55);
     }
   }
@@ -883,8 +1021,9 @@ export const testing = (() => {
   class Chapel extends Room {
     constructor() {
       super();
-      this.size = 40;
+      this.size = 30;
       this.type = "Chapel";
+      this.isMajor = true;
       this.color = new THREE.Color(0xd44468);
     }
   }
@@ -892,8 +1031,9 @@ export const testing = (() => {
   class Tower extends Room {
     constructor() {
       super();
-      this.size = 13;
+      this.size = 15;
       this.type = "Tower";
+      this.isMajor = true;
       this.growType = GrowType.Circular;
       this.minBuildDist = this.size * 5;
       this.color = new THREE.Color(0x4287f5);
@@ -905,6 +1045,7 @@ export const testing = (() => {
       super();
       this.size = 40;
       this.type = "Barracks";
+      this.isMajor = true;
       this.color = new THREE.Color(0x514a59);
       this.supportRooms = [new PlaceOfArms(), new MessHall()];
     }
@@ -915,6 +1056,7 @@ export const testing = (() => {
       super();
       this.size = 50;
       this.type = "PlaceOfArms";
+      this.isMajor = false;
       this.color = new THREE.Color(0x443f4a);
       this.supportRooms = [];
     }
@@ -925,6 +1067,7 @@ export const testing = (() => {
       super();
       this.size = 30;
       this.type = "MessHall";
+      this.isMajor = false;
       this.color = new THREE.Color(0x625b69);
       this.supportRooms = [];
     }
