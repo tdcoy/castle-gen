@@ -2,6 +2,7 @@ import * as THREE from "https://unpkg.com/three@0.158.0/build/three.module.js";
 import { poisson_disc_sampling } from "./PoissonDiscSampling.js";
 import { delaunay_triangulation } from "./DelaunayTriangulation.js";
 import { heaps_permutation } from "./Heaps.js";
+import { prims } from "./Prims.js";
 
 export const testing = (() => {
   const GrowType = Object.freeze({
@@ -12,8 +13,9 @@ export const testing = (() => {
   });
 
   class TestBuilder {
-    constructor(scene) {
+    constructor(scene, gizmos) {
       this.scene = scene;
+      this.gizmos = gizmos;
       this.Init();
     }
 
@@ -175,26 +177,48 @@ export const testing = (() => {
             this.builtRooms[i].calcBorderEdges();
             let center = this.builtRooms[i].pickRandomCenter();
             centers.push(center);
-            this.DrawPoint(center, new THREE.Color("blue"), 1);
+            this.gizmos.DrawPoint(center, new THREE.Color("blue"), 1);
           }
 
-          // Triangulate all the nodes
-          let roomTriangulation = new delaunay_triangulation.Triangulate().Init(
-            centers
+          //*******Look into weights being influenced by what kind of room and ajacent room type**************
+          // Get MST of nodes
+          let mst = new prims.MST(
+            this.ConvertTriEdgesToNodeArray(
+              centers,
+              new delaunay_triangulation.Triangulate().Triangulation(centers)
+            )
           );
 
-          // Find minimum spanning tree (primms) of all the nodes from triangulation
+          // Draw the new path
+          for (let i = 1; i < mst.length; i++) {
+            let pointA = centers[i];
+            let pointB = centers[mst[i]];
+
+            let points = [];
+            points.push(pointA);
+            points.push(pointB);
+
+            this.gizmos.DrawLinesBetweenPoints(
+              points,
+              new THREE.Color("blue"),
+              0.1
+            );
+          }
 
           // Reconnect some of the major rooms to nearby major rooms, especially wards to ajacent major rooms
-          
+
           // Use A* to find shortest path between every adjacent rooms
 
           //-----Debug Stuff-----
           for (let i = 0; i < towerSpawnPoints.length; i++) {
-            this.DrawPoint(towerSpawnPoints[i], new THREE.Color("yellow"), 1);
+            this.gizmos.DrawPoint(
+              towerSpawnPoints[i],
+              new THREE.Color("yellow"),
+              1
+            );
           }
 
-          this.DrawShortestPath(this.shortestPath);
+          this.gizmos.DrawShortestPath(this.shortestPath);
           //---------------------
 
           acceptedLayout = true;
@@ -542,7 +566,7 @@ export const testing = (() => {
       //console.log(room.spawnPoint);
       let acceptedSample = 0;
       //console.log(room.type);
-      let sampleVertex = new delaunay_triangulation.Vertex(
+      let sampleVertex = new THREE.Vector2(
         room.spawnPoint.x,
         room.spawnPoint.y
       );
@@ -711,55 +735,6 @@ export const testing = (() => {
       return meshes;
     }
 
-    DrawLinesBetweenPoints(points, color) {
-      const roomPoints = [];
-
-      const material = new THREE.LineBasicMaterial({ color: color });
-
-      for (let i = 0; i < points.length; i++) {
-        //create a blue LineBasicMaterial
-
-        for (let j = 0; j < points.length; j++) {
-          roomPoints.push(new THREE.Vector3(points[i].x, 3, points[i].y));
-          roomPoints.push(new THREE.Vector3(points[j].x, 3, points[j].y));
-        }
-      }
-      const geometry = new THREE.BufferGeometry().setFromPoints(roomPoints);
-      const line = new THREE.Line(geometry, material);
-      this.scene.add(line);
-    }
-
-    DrawShortestPath(points) {
-      let linePoints = [];
-
-      for (let i = 0; i < points.length; i++) {
-        linePoints.push(new THREE.Vector3(points[i].x, 0, points[i].y));
-      }
-
-      linePoints.push(new THREE.Vector3(points[0].x, 0, points[0].y));
-
-      const material = new THREE.LineBasicMaterial({ color: 0xf6ff00 });
-      const geometry = new THREE.BufferGeometry().setFromPoints(linePoints);
-      const line = new THREE.Line(geometry, material);
-      this.scene.add(line);
-    }
-
-    DrawPoint(point, color, size) {
-      const geometry = new THREE.SphereGeometry(size, 5, 2);
-      const material = new THREE.MeshBasicMaterial({ color: color });
-      const cube = new THREE.Mesh(geometry, material);
-      this.scene.add(cube);
-      cube.position.set(point.x, 0, point.y);
-    }
-
-    DrawBox(point, color, size) {
-      const geometry = new THREE.BoxGeometry(size, size, size);
-      const material = new THREE.MeshBasicMaterial({ color: color });
-      const cube = new THREE.Mesh(geometry, material);
-      this.scene.add(cube);
-      cube.position.set(point.x, 0, point.y);
-    }
-
     // Removes an item from the list that contains it by looking up that items index
     RemoveItemFromList(item, list) {
       let index = list.indexOf(item);
@@ -777,6 +752,96 @@ export const testing = (() => {
           (c = !c);
       return c;
     }
+
+    GetRoomByCenterPos(v) {
+      for (let i = 0; i < this.builtRooms.length; i++) {
+        let room = this.builtRooms[i];
+        if (room.center.equals(v)) {
+          return room;
+        }
+      }
+    }
+
+    ConvertTriEdgesToNodeArray(points, triangles) {
+      /* 2D array containing every node in the room centers list and the nodes they are connected to
+             The position of each center point in centers[] coorelates to that same node in nodes[]
+
+                0  1  2  3 ... n
+             0  0  3  0  0 ... n  --> in this row node 0 is connected to node 1 with weight of 3
+             1  0  0  3  0 ... n  --> node 1 is connected to node 3 with a weight of 2
+             .
+             .
+             .
+             n
+           */
+      let nodes = [];
+      // Initialize the nodes
+      for (let i = 0; i < points.length; i++) {
+        let row = new Array(points.length).fill(0);
+        nodes.push(row);
+      }
+
+      // Set node adjacency
+      for (let i = 0; i < points.length; i++) {
+        let nodeA = points[i];
+
+        for (let j = 0; j < triangles.length; j++) {
+          // Get triangle edges to check for node adjacency
+          let edges = triangles[j].getEdges();
+
+          for (let k = 0; k < edges.length; k++) {
+            /*
+             If the triangulated edge contains the point at center[i],
+             the other point in the edge is a connected node to center[i]
+            */
+            let nodeB = undefined;
+
+            if (nodeA.equals(edges[k].v0)) {
+              nodeB = edges[k].v1;
+            }
+            if (nodeA.equals(edges[k].v1)) {
+              nodeB = edges[k].v0;
+            }
+
+            if (nodeB != undefined) {
+              // Get the index of the adjacent node
+              let nodeBIndex = points.indexOf(nodeB);
+              let dist = edges[k].getDistBetweenVerts();
+              // Set calculated weight
+              //nodes[i][nodeBIndex] = edges[k].getAproximateDistBetweenVerts();
+              nodes[i][nodeBIndex] = this.calcWeights(nodeA, nodeB, dist);
+            }
+          }
+        }
+      }
+
+      /*
+        Weights should be calculated by:
+          If the nodes are a major room and its support room = 1
+          If the nodes are 2 major rooms = dist/2
+          If the node is a major room and a ward = dis/3
+          Else the weight is just the distance between the 2
+      */
+
+      return nodes;
+    }
+
+    calcWeights(nodeA, nodeB, dist) {
+      let weight = 0;
+      let roomA = this.GetRoomByCenterPos(nodeA);
+      let roomB = this.GetRoomByCenterPos(nodeB);
+
+      // If roomA is a major room and roomB is one of its supporting rooms
+      if (roomA.isMajor && roomA.supportRooms.includes(roomB)) {
+        weight = 1;
+      } else if (roomA.isMajor && roomB.isMajor) {
+        weight = Math.floor(dist) / 2;
+      } else {
+        weight = Math.floor(dist);
+      }
+
+      return weight;
+    }
   }
 
   class Room {
@@ -789,6 +854,7 @@ export const testing = (() => {
       this.supportRooms = [];
       this.isMajor = false;
       this.doorTo = [];
+      this.center = new THREE.Vector2();
     }
 
     addTriangles(t) {

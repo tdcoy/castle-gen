@@ -7,7 +7,7 @@ export const delaunay_triangulation = (() => {
     Init(points) {
       let vertices = [];
       for (let i = 0; i < points.length; i++) {
-        const v = new Vertex(points[i].x, points[i].y);
+        const v = new THREE.Vector2(points[i].x, points[i].y);
         vertices.push(v);
       }
 
@@ -66,9 +66,9 @@ export const delaunay_triangulation = (() => {
 
       let dx = (maxX - minX) * 2;
       let dy = (maxY - minY) * 2;
-      let v0 = new Vertex(minX - dx, minY - dy * 3);
-      let v1 = new Vertex(minX - dx, maxY + dy);
-      let v2 = new Vertex(maxX + dx * 3, maxY + dy);
+      let v0 = new THREE.Vector2(minX - dx, minY - dy * 3);
+      let v1 = new THREE.Vector2(minX - dx, maxY + dy);
+      let v2 = new THREE.Vector2(maxX + dx * 3, maxY + dy);
 
       return new Triangle(v0, v1, v2);
     }
@@ -193,38 +193,6 @@ export const delaunay_triangulation = (() => {
     }
   }
 
-  class Vertex {
-    constructor(x, y) {
-      this.x = x;
-      this.y = y;
-    }
-
-    getX() {
-      return this.x;
-    }
-    getY() {
-      return this.y;
-    }
-
-    setX(x) {
-      this.x = x;
-    }
-
-    setY(y) {
-      this.y = y;
-    }
-
-    equals(v) {
-      return v.x === this.x && v.y === this.y;
-    }
-
-    distanceTo(v) {
-      const dx = v.x - this.x;
-      const dy = v.y - this.y;
-      return Math.sqrt(dx * dx + dy * dy);
-    }
-  }
-
   class Edge {
     constructor(v0, v1) {
       this.v0 = v0;
@@ -242,6 +210,10 @@ export const delaunay_triangulation = (() => {
       let midx = (this.v0.x + this.v1.x) / 2;
       let midy = (this.v0.y + this.v1.y) / 2;
       return new THREE.Vector2(midx, midy);
+    }
+
+    getDistBetweenVerts() {
+      return this.v0.distanceTo(this.v1);
     }
   }
 
@@ -327,9 +299,9 @@ export const delaunay_triangulation = (() => {
     }
 
     calcCircumCenter(v0, v1, v2) {
-      let sqrV0 = new Vertex(Math.pow(v0.x, 2), Math.pow(v0.y, 2));
-      let sqrV1 = new Vertex(Math.pow(v1.x, 2), Math.pow(v1.y, 2));
-      let sqrV2 = new Vertex(Math.pow(v2.x, 2), Math.pow(v2.y, 2));
+      let sqrV0 = new THREE.Vector2(Math.pow(v0.x, 2), Math.pow(v0.y, 2));
+      let sqrV1 = new THREE.Vector2(Math.pow(v1.x, 2), Math.pow(v1.y, 2));
+      let sqrV2 = new THREE.Vector2(Math.pow(v2.x, 2), Math.pow(v2.y, 2));
 
       //float D = (A.x * (B.y - C.y) + B.x * (C.y - A.y) + C.x * (A.y - B.y)) * 2f;
       let dist =
@@ -348,7 +320,7 @@ export const delaunay_triangulation = (() => {
           (sqrV2.x + sqrV2.y) * (v1.x - v0.x)) /
         dist;
       //return new Vector2(x, y);
-      return new Vertex(x, y);
+      return new THREE.Vector2(x, y);
     }
 
     calcCircumRadius(center) {
@@ -370,5 +342,5 @@ export const delaunay_triangulation = (() => {
     }
   }
 
-  return { Triangulate: Triangulate, Vertex: Vertex };
+  return { Triangulate: Triangulate };
 })();
