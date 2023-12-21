@@ -2,6 +2,7 @@ import { OrbitControls } from "https://unpkg.com/three@0.127.0/examples/jsm/cont
 import * as THREE from "https://unpkg.com/three@0.158.0/build/three.module.js";
 import { physics } from "./src/Physics.js";
 import { testing } from "./src/Testing.js";
+import { gizmos } from "./src/Gizmos.js";
 
 class Demo {
   constructor() {
@@ -38,7 +39,8 @@ class Demo {
     this.controls.update();
     this.camera.position.set(0, regionSize, 0);
 
-    let test = new testing.TestBuilder(this.scene);
+    let gizmo = new gizmos.DrawGizmos(this.scene);
+    let test = new testing.TestBuilder(this.scene, gizmo);
   }
 
   CreateScene() {
@@ -120,13 +122,21 @@ class Demo {
 
   LoadSkyBox() {
     const skyBoxloader = new THREE.CubeTextureLoader();
-    const skyBoxTexture = skyBoxloader.load([
+    /* const skyBoxTexture = skyBoxloader.load([
       "./images/skybox/posx.jpg",
       "./images/skybox/negx.jpg",
       "./images/skybox/posy.jpg",
       "./images/skybox/negy.jpg",
       "./images/skybox/posz.jpg",
       "./images/skybox/negz.jpg",
+    ]); */
+    const skyBoxTexture = skyBoxloader.load([
+      "./images/skybox_plain/negx.jpg",
+      "./images/skybox_plain/negx.jpg",
+      "./images/skybox_plain/posy.jpg",
+      "./images/skybox_plain/negy.jpg",
+      "./images/skybox_plain/negx.jpg",
+      "./images/skybox_plain/negx.jpg",
     ]);
     this.scene.background = skyBoxTexture;
   }
