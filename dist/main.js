@@ -122,13 +122,21 @@ class Demo {
 
   LoadSkyBox() {
     const skyBoxloader = new THREE.CubeTextureLoader();
-    const skyBoxTexture = skyBoxloader.load([
+    /* const skyBoxTexture = skyBoxloader.load([
       "./images/skybox/posx.jpg",
       "./images/skybox/negx.jpg",
       "./images/skybox/posy.jpg",
       "./images/skybox/negy.jpg",
       "./images/skybox/posz.jpg",
       "./images/skybox/negz.jpg",
+    ]); */
+    const skyBoxTexture = skyBoxloader.load([
+      "./images/skybox_plain/negx.jpg",
+      "./images/skybox_plain/negx.jpg",
+      "./images/skybox_plain/posy.jpg",
+      "./images/skybox_plain/negy.jpg",
+      "./images/skybox_plain/negx.jpg",
+      "./images/skybox_plain/negx.jpg",
     ]);
     this.scene.background = skyBoxTexture;
   }

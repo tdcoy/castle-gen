@@ -2,116 +2,155 @@ import * as THREE from "https://unpkg.com/three@0.158.0/build/three.module.js";
 
 export const aStarSearch = (() => {
   /* 
-
-        -Find a path between each adjacent nodes
-        -If the path doesnt consist of triangles outside of the 2 rooms, 
-          add a doorway where the path crosses the 2 rooms
         -If the path consits of triangles from the unUsedTriangles list, create a hallway
 
-        -make going through exsisting hallways cheaper than making a new one
-            ex) if(node == support room)
-                    cost + 15
-                if(node == major room)
-                    cost + 10            
-                if(node == nothing)
-                    cost + 5
-                if(node == hallway)
-                    cost + 1
-
-        -going through wards or major rooms is prefered over support rooms
-        -all towers should be accessable by their support room only
-
-
-
-
-    A* finds a path from start to goal.
-    h is the heuristic function. h(n) estimates the cost to reach goal from node n.
-
-      OPEN  // Set of nodes to be evaluated (adjacent triangles that havnet been checked)
-      CLOSED  // Set of nodes already evaluated (adjacent triangles that have been checked)
-
-      loop
-        current = node in OPEN with the lowest f_cost
-        remove current from OPEN
-        add current to CLOSED
-
-        // Path found
-        if current is the target node (target is also the end node)
-         return
         
-        foreach adjacent of the current node
-         if adjacent is not traversable or adjacent is in CLOSED
-          skip to the next adjacent
-
-          if new path to adjacent is shorter OR adjacent is not in OPEN
-            set f_cost of adjacent
-            set parent off adjacent to current
-            
-            if adjacent is not in OPEN
-              add adjacent to OPEN 
 */
   class AStar {
-    constructor() {}
-
-    FindPath(start, goal, h) {
+    constructor(start, end, nodes) {
+      this.nodes = nodes;
       this.start = start;
-      this.goal = goal;
-      this.h = h; //h_cost = dist from the node to the end node
-      // The set of discovered nodes that may need to be (re-)expanded.
-      // Initially, only the start node is known.
-      // This is usually implemented as a min-heap or priority queue rather than a hash-set.
-      this.openSet = [this.start];
+      this.end = end;
+      return this.FindPath();
+    }
 
-      // For node n, cameFrom[n] is the node immediately preceding it on the cheapest path from the start
-      // to n currently known.
-      this.cameFrom = [];
+    FindPath() {
+      //OPEN  // Set of nodes to be evaluated (adjacent triangles that havnet been checked)
+      let open = [this.start];
+      //CLOSED  // Set of nodes already evaluated (adjacent triangles that have been checked)
+      let closed = [];
 
-      // For node n, gScore[n] is the cost of the cheapest path from start to n currently known.
-      this.gScore = new Map();
-      this.gScore.set(this.start, 0);
+      let iterations = 0;
+      let n = 500;
 
-      // For node n, fScore[n] = gScore[n] + h(n). fScore[n] represents our current best guess as to
-      // how cheap a path could be from start to finish if it goes through n.
-      this.fScore = new Map();
-      this.fScore.set(this.start, this.h(this.start));
+      while (open.length > 0) {
+        //current = node in OPEN with the lowest f_cost
+        var lowestIndex = 0;
 
-      // This operation can occur in O(Log(N)) time if openSet is a min-heap or a priority queue
-      while (this.openSet.length > 0) {
-        //node in openSet having the lowest fScore[] value
-        let current = 0;
-
-        if (current == target) {
-          return ReconstructPath(this.cameFrom, current);
+        for (let i = 0; i < open.length; i++) {
+          if (open[i].fCost < open[lowestIndex].fCost) {
+            lowestIndex = i;
+          }
         }
 
-        // remove the current node from openSet
-        this.openSet.delete(current);
+        // Set lowest fcost node to current
+        let current = open[lowestIndex];
 
-        // Foreach adjacent node of current
-            // d(current,adjacent) is the weight of the edge from current to adjacent
-            // tentative_gScore is the distance from start to the adjacent through current
-            //let tentative_gScore = gScore[current] + d(current, adjacent)
+        // If current is the end node, a path has been found
+        if (current === this.end) {
+          // Return path
 
-            //if tentative_gScore < gScore[adjacent]
-            // This path to adjacent is better than any previous one. Record it!
-            //cameFrom[adjacent] = current
-            //gScore[adjacent] = tentative_gScore
-            //fScore[adjacent] = tentative_gScore + h(adjacent)
-            //if adjacent not in openSet
-            //    openSet.add(adjacent)
-            
-        // Open set is empty but goal was never reached
-        // return failure
+          let tmp = current;
+          let path = [];
+          //path.push(tmp);
+          while (tmp.parent) {
+            path.push(tmp);
+            tmp = tmp.parent;
+
+            if (path.length > 100) {
+              console.log("something broke");
+              break;
+            }
+          }
+
+          return path.reverse();
+        }
+
+        // Remove current from OPEN
+        open.splice(lowestIndex, 1);
+        // Add current to CLOSED
+        closed.push(current);
+
+        let adjacents = current.adjacent;
+
+        // Check all adjacent nodes
+        for (let i = 0; i < adjacents.length; i++) {
+          let adjacent = adjacents[i];
+
+          // If the adjacent node is not in the closed list
+          if (!closed.includes(adjacent)) {
+            /* 
+            Calculate Cost:
+              -going through wards or major rooms is prefered over support rooms
+              -all towers should be accessable by their support room only
+              -make going through exsisting hallways cheaper than making a new one
+                ex) if(node == support room)
+                        cost + 15
+                    if(node == major room)
+                        cost + 10            
+                    if(node == nothing)
+                        cost + 5
+                    if(node == hallway)
+                        cost + 1
+            */
+            let cost = 0;
+
+            // Empty node
+            if (adjacent.room == undefined) {
+              cost = current.gCost + 5;
+            } else {
+              // Hallway
+              if (adjacent.room.type == "Hallway") {
+                cost = current.gCost + 1;
+              }
+              // Major Room
+              else if (adjacent.room.isMajor) {
+                cost = current.gCost + 2;
+              } else {
+                // Support room
+                cost = current.gCost + 2;
+              }
+            }
+
+            /* switch (adjacent.room) {
+              case undefined:
+                cost = current.gCost + 5;
+                break;
+              case adjacent.room.type == "Hallway":
+                cost = current.gCost + 1;
+                break;
+              case adjacent.room.isMajor == false:
+                cost = current.gCost + 8;
+                break;
+              case adjacent.room.isMajor == true:
+                cost = current.gCost + 2;
+                break;
+              default:
+                console.log(adjacent.room.isMajor);
+                cost = current.gCost + 10;
+            } */
+
+            // Need to check this node even if its not in open list
+            if (!open.includes(adjacent)) {
+              open.push(adjacent);
+            } else if (cost >= adjacent.gCost) {
+              continue;
+            }
+
+            adjacent.gCost = cost;
+            adjacent.hCost = this.CalcHCost(adjacent, this.end);
+            adjacent.fCost = adjacent.gCost + adjacent.hCost;
+            adjacent.parent = current;
+          }
+        }
+
+        if (iterations >= n) {
+          console.log("Something broke in A*");
+          break;
+        } else {
+          iterations++;
+        }
       }
+      return [];
     }
 
-    ReconstructPath(cameFrom, current){
-        totalPath = current;
+    CalcHCost(v1, v2) {
+      let d1 = Math.abs(v2.position.x - v1.position.x);
+      let d2 = Math.abs(v2.position.y - v1.position.y);
 
-        //while current is in cameFrom keys:
-            //current = cameFrom[current]
-            //totalPath.prepend(current)
-        //return totalPath
+      return d1 + d2;
     }
   }
+
+  return { AStar: AStar };
 })();

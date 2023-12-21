@@ -3,6 +3,7 @@ import { poisson_disc_sampling } from "./PoissonDiscSampling.js";
 import { delaunay_triangulation } from "./DelaunayTriangulation.js";
 import { heaps_permutation } from "./Heaps.js";
 import { prims } from "./Prims.js";
+import { aStarSearch } from "./AStarSearch.js";
 
 export const testing = (() => {
   const GrowType = Object.freeze({
@@ -34,6 +35,8 @@ export const testing = (() => {
       this.unUsedTriangles = new delaunay_triangulation.Triangulate().Init(
         points
       );
+
+      this.allTriangles = this.unUsedTriangles.slice();
 
       this.unBuiltRooms = [];
       this.usedTriangles = [];
@@ -172,27 +175,26 @@ export const testing = (() => {
           this.ExpandRoomsUntilComplete(wards);
 
           // Calculate Border edges and center points of rooms
-          let centers = [];
+          let roomPos = [];
           for (let i = 0; i < this.builtRooms.length; i++) {
             this.builtRooms[i].calcBorderEdges();
             let center = this.builtRooms[i].pickRandomCenter();
-            centers.push(center);
-            this.gizmos.DrawPoint(center, new THREE.Color("blue"), 1);
+            roomPos.push(center);
+            this.gizmos.DrawPoint(center, new THREE.Color("blue"), 1.1);
           }
 
-          //*******Look into weights being influenced by what kind of room and ajacent room type**************
           // Get MST of nodes
           let mst = new prims.MST(
             this.ConvertTriEdgesToNodeArray(
-              centers,
-              new delaunay_triangulation.Triangulate().Triangulation(centers)
+              roomPos,
+              new delaunay_triangulation.Triangulate().Triangulation(roomPos)
             )
           );
 
-          // Draw the new path
+          // Draw MST path
           for (let i = 1; i < mst.length; i++) {
-            let pointA = centers[i];
-            let pointB = centers[mst[i]];
+            let pointA = roomPos[i];
+            let pointB = roomPos[mst[i]];
 
             let points = [];
             points.push(pointA);
@@ -205,20 +207,74 @@ export const testing = (() => {
             );
           }
 
-          // Reconnect some of the major rooms to nearby major rooms, especially wards to ajacent major rooms
+          // Create nodes
+          let nodes = this.CreateAStarNodes();
+          let paths = [];
 
-          // Use A* to find shortest path between every adjacent rooms
+          // Find path between each mst node pair
+          for (let i = 1; i < mst.length; i++) {
+            // Reset node values
+            for (let j = 0; j < nodes.length; j++) {
+              nodes[j].clear();
+            }
+
+            let start = this.GetNodeAtPos(roomPos[i], nodes);
+            let end = this.GetNodeAtPos(roomPos[mst[i]], nodes);
+            let path = new aStarSearch.AStar(end, start, nodes);
+
+            // Need to check that any Empty nodes in the path become Hallways
+            for (let i = 0; i < path.length; i++) {
+              if (path[i].room == undefined) {
+                let hallway = new Hallway();
+                path[i].room = hallway;
+
+                let t = this.GetTriAtPos(
+                  path[i].position,
+                  this.unUsedTriangles
+                );
+                path[i].room.addTriangles(t);
+              }
+            }
+            paths.push(path);
+          }
+
+          // Draw paths
+          for (let i = 0; i < paths.length; i++) {
+            let path = paths[i];
+
+            for (let j = 0; j < path.length; j++) {
+              if (path[j].room.type == "Hallway") {
+                this.CreateMesh(
+                  path[j].room.triangles,
+                  -0.1,
+                  path[j].room.color
+                );
+              } else {
+                this.gizmos.DrawPoint(
+                  path[j].position,
+                  new THREE.Color("green"),
+                  0.7
+                );
+              }
+            }
+          }
+
+          // ********** Maybe reconnect some of the major rooms to nearby major rooms,
+          // especially wards to ajacent major rooms *****************
 
           //-----Debug Stuff-----
-          for (let i = 0; i < towerSpawnPoints.length; i++) {
+          // Draw Towers
+          /* for (let i = 0; i < towerSpawnPoints.length; i++) {
             this.gizmos.DrawPoint(
               towerSpawnPoints[i],
               new THREE.Color("yellow"),
-              1
+              0.1
             );
           }
+          */
+          // Draw Walls
+          //this.gizmos.DrawShortestPath(this.shortestPath);
 
-          this.gizmos.DrawShortestPath(this.shortestPath);
           //---------------------
 
           acceptedLayout = true;
@@ -458,8 +514,6 @@ export const testing = (() => {
 
       this.DrawLinesBetweenPoints(points);
     }
-
-    PathFind() {}
 
     AddDoor(r1, r2) {
       let sharedEdge = this.CheckForSharedEdge(r1, r2);
@@ -842,6 +896,82 @@ export const testing = (() => {
 
       return weight;
     }
+
+    CreateAStarNodes() {
+      // Create nodes
+      let nodes = [];
+
+      // Empty triangles -> empty nodes
+      for (let i = 0; i < this.unUsedTriangles.length; i++) {
+        let t = this.unUsedTriangles[i];
+        let n = new Node(t.center(), undefined);
+        nodes.push(n);
+      }
+
+      // Room triangles -> room nodes
+      for (let i = 0; i < this.builtRooms.length; i++) {
+        let r = this.builtRooms[i];
+        for (let j = 0; j < r.triangles.length; j++) {
+          let n = new Node(r.triangles[j].center(), r.type);
+          nodes.push(n);
+        }
+      }
+
+      // Build Paths
+      for (let i = 0; i < this.allTriangles.length; i++) {
+        let t = this.allTriangles[i];
+        let n = this.GetNodeAtPos(t.center(), nodes);
+        let adj = t.getAdjTriangles();
+
+        for (let j = 0; j < adj.length; j++) {
+          n.adjacent.push(this.GetNodeAtPos(adj[j].center(), nodes));
+        }
+      }
+
+      return nodes;
+    }
+
+    GetNodeAtPos(pos, nodes) {
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].position.equals(pos)) {
+          return nodes[i];
+        }
+      }
+    }
+
+    GetTriAtPos(pos, triangles) {
+      for (let i = 0; i < triangles.length; i++) {
+        if (triangles[i].center().equals(pos)) {
+          return triangles[i];
+        }
+      }
+      return undefined;
+    }
+  }
+
+  class Node {
+    constructor(position, room) {
+      this.position = position;
+      this.room = room;
+      this.adjacent = [];
+      this.fCost = 0;
+      this.hCost = 0;
+      this.gCost = 0;
+      this.parent = undefined;
+    }
+
+    clear() {
+      this.fCost = 0;
+      this.hCost = 0;
+      this.gCost = 0;
+      this.parent = undefined;
+    }
+
+    calcCosts(v1, v2) {
+      this.hCost = this.position.distanceTo(start);
+      this.gCost = this.position.distanceTo(end);
+      this.fCost = this.gCost + this.hCost;
+    }
   }
 
   class Room {
@@ -957,11 +1087,11 @@ export const testing = (() => {
     }
   }
 
-  class HallWay extends Room {
+  class Hallway extends Room {
     constructor() {
       super();
       this.size = 10;
-      this.type = "HallWay";
+      this.type = "Hallway";
       this.color = new THREE.Color(0xfffb00);
       this.isMajor = false;
     }

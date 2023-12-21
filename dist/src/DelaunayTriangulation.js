@@ -282,8 +282,8 @@ export const delaunay_triangulation = (() => {
 
     center() {
       //The centroid of a triangle = ((x1+x2+x3)/3, (y1+y2+y3)/3)
-      let centerX = (this.v0.x + this.v1.x + this.v2.x) / 3;
-      let centerY = (this.v0.y + this.v1.y + this.v2.y) / 3;
+      let centerX = Math.floor((this.v0.x + this.v1.x + this.v2.x) / 3);
+      let centerY = Math.floor((this.v0.y + this.v1.y + this.v2.y) / 3);
 
       return new THREE.Vector2(centerX, centerY);
     }
